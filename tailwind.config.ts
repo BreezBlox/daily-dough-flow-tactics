@@ -61,7 +61,23 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
+				},
+				// MGS Theme Colors
+				mgs: {
+					green: '#48bb78',
+					darkgreen: '#38a169',
+					red: '#e53e3e',
+					black: '#1a202c',
+					darkgray: '#2d3748',
+					gray: '#4a5568',
+					lightgray: '#a0aec0',
+					text: '#cbd5e0',
+					lightertext: '#e2e8f0',
 				}
+			},
+			fontFamily: {
+				orbitron: ['Orbitron', 'sans-serif'],
+				'roboto-mono': ['Roboto Mono', 'monospace'],
 			},
 			borderRadius: {
 				lg: 'var(--radius)',
@@ -84,11 +100,31 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'pulse-glow': {
+					'0%, 100%': { 
+						boxShadow: '0 0 3px rgba(72, 187, 120, 0.5)'
+					},
+					'50%': { 
+						boxShadow: '0 0 10px rgba(72, 187, 120, 0.8)'
+					}
+				},
+				'fade-in': {
+					'0%': {
+						opacity: '0',
+						transform: 'translateY(10px)'
+					},
+					'100%': {
+						opacity: '1',
+						transform: 'translateY(0)'
+					}
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'pulse-glow': 'pulse-glow 2s infinite ease-in-out',
+				'fade-in': 'fade-in 0.3s ease-out',
 			}
 		}
 	},
