@@ -81,6 +81,7 @@ const PaycheckForm: React.FC<PaycheckFormProps> = ({ selectedDate, onSubmit }) =
           <option value="weekly">Weekly</option>
           <option value="bi-weekly">Bi-Weekly</option>
           <option value="monthly">Monthly</option>
+          <option value="one-time">One-Time</option>
         </select>
       </div>
       
