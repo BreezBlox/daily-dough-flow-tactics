@@ -1,7 +1,7 @@
 
 import { useState, FormEvent, useId } from "react";
 import { EntryType, FinancialEntry, Frequency } from "@/types";
-import { formatDateToYYYYMMDD } from "@/utils/dateUtils";
+import { formatDateToYYYYMMDD, parseLocalDateString } from "@/utils/dateUtils";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 
@@ -29,7 +29,7 @@ const BillForm: React.FC<BillFormProps> = ({ selectedDate, onSubmit }) => {
       type: 'bill' as EntryType,
       name: billName,
       amount: typeof billAmount === "number" ? billAmount : parseFloat(String(billAmount)),
-      date: new Date(billDueDate),
+      date: parseLocalDateString(billDueDate),
       frequency: billFrequency
     });
     

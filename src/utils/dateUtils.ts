@@ -16,9 +16,15 @@ export function formatDateToYYYYMMDD(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
-  
   return `${year}-${month}-${day}`;
 }
+
+// Parse a YYYY-MM-DD string as a local date (not UTC!)
+export function parseLocalDateString(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
 
 // Format date as Month D, YYYY
 export function formatDateToMonthDayYear(date: Date): string {
