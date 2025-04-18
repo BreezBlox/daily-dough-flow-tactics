@@ -11,18 +11,22 @@ export function getFirstDayOfMonth(year: number, month: number): number {
   return new Date(year, month, 1).getDay();
 }
 
-// Format date as YYYY-MM-DD
+// Format date as YYYY-MM-DD (ISO)
 export function formatDateToYYYYMMDD(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    const today = new Date();
+    return today.toISOString().substring(0, 10);
+  }
+  return date.toISOString().substring(0, 10);
 }
 
-// Parse a YYYY-MM-DD string as a local date (not UTC!)
+// Parse a YYYY-MM-DD (ISO) string as a local date
 export function parseLocalDateString(dateStr: string): Date {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day);
+  if (!dateStr || typeof dateStr !== 'string') return new Date();
+  // Accepts YYYY-MM-DD
+  const d = new Date(dateStr);
+  // If invalid date, fallback to today
+  return isNaN(d.getTime()) ? new Date() : d;
 }
 
 
@@ -79,39 +83,61 @@ export function calculateRecurringEntries(
   const allEntries: FinancialEntry[] = [];
   
   entries.forEach(entry => {
+    // Set to collect all unique occurrence dates
+    const occurrenceDates = new Set<string>();
+
+    // Add recurrence-generated dates (including one-time logic)
     let currentDate = new Date(entry.date);
-    
-    // For one-time entries, only include if they fall within the range
     if (entry.frequency === 'one-time') {
       if (currentDate >= startDate && currentDate <= endDate) {
-        allEntries.push({ ...entry });
+        occurrenceDates.add(formatDateToYYYYMMDD(currentDate));
       }
-      return;
+    } else {
+      const effectiveEndDate = entry.stopDate && entry.stopDate < endDate 
+        ? entry.stopDate 
+        : endDate;
+      let occurrenceCount = 0;
+      while (currentDate <= effectiveEndDate) {
+        if (entry.occurrenceLimit && occurrenceCount >= entry.occurrenceLimit) {
+          break;
+        }
+        if (currentDate >= startDate) {
+          occurrenceDates.add(formatDateToYYYYMMDD(currentDate));
+          occurrenceCount++;
+        }
+        switch (entry.frequency) {
+          case 'weekly':
+            currentDate.setDate(currentDate.getDate() + 7);
+            break;
+          case 'bi-weekly':
+            currentDate.setDate(currentDate.getDate() + 14);
+            break;
+          case 'monthly':
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            break;
+        }
+      }
     }
-    
-    // For recurring entries, calculate all occurrences within range
-    while (currentDate <= endDate) {
-      if (currentDate >= startDate) {
-        allEntries.push({
-          ...entry,
-          id: `${entry.id}-${formatDateToYYYYMMDD(currentDate)}`,
-          date: new Date(currentDate)
-        });
-      }
-      
-      // Advance to the next occurrence
-      switch (entry.frequency) {
-        case 'weekly':
-          currentDate.setDate(currentDate.getDate() + 7);
-          break;
-        case 'bi-weekly':
-          currentDate.setDate(currentDate.getDate() + 14);
-          break;
-        case 'monthly':
-          currentDate.setMonth(currentDate.getMonth() + 1);
-          break;
-      }
+
+    // Add customDates (if any)
+    if (entry.customDates && entry.customDates.length > 0) {
+      entry.customDates.forEach(dateStr => {
+        const customDate = parseLocalDateString(dateStr);
+        if (customDate >= startDate && customDate <= endDate) {
+          occurrenceDates.add(dateStr);
+        }
+      });
     }
+
+    // For each unique date, push an entry
+    occurrenceDates.forEach(dateStr => {
+      const dateObj = parseLocalDateString(dateStr);
+      allEntries.push({
+        ...entry,
+        id: `${entry.id}-${dateStr}`,
+        date: dateObj
+      });
+    });
   });
   
   return allEntries;
@@ -146,7 +172,7 @@ export function calculateDailyReserves(
     dayEntries.forEach(entry => {
       if (entry.type === 'paycheck') {
         cumulativeReserve += entry.amount;
-      } else if (entry.type === 'bill') {
+      } else if (entry.type === 'bill' || entry.type === 'purchase') {
         cumulativeReserve -= entry.amount;
       }
     });

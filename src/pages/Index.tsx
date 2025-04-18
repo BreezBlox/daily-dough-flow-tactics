@@ -1,35 +1,51 @@
 
 import { useState, useEffect } from "react";
 import LineGraph, { IntervalType } from "@/components/LineGraph";
+import { MONTH_OPTIONS } from "@/utils/monthOptions";
 import Calendar from "@/components/Calendar";
 // import BarGraph from "@/components/BarGraph"; // No longer used
 import BillForm from "@/components/BillForm";
 import CsvImport from "@/components/CsvImport";
 import PaycheckForm from "@/components/PaycheckForm";
 import EntryList from "@/components/EntryList";
+import { FinancialEntry } from "@/types";
+import PurchaseForm from "@/components/PurchaseForm";
+import PurchaseRadio from "@/components/ui/purchase-radio";
+import OnboardingDialog from "@/components/OnboardingDialog";
+import OnboardingHint from "@/components/ui/OnboardingHint";
 import { FinancialEntry, EntryType, DailyReserve } from "@/types";
 import { calculateRecurringEntries, calculateDailyReserves, formatDateToMonthDayYear } from "@/utils/dateUtils";
 import { v4 as uuidv4 } from "uuid";
 
 const Index = () => {
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [entryType, setEntryType] = useState<EntryType>("bill");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [entries, setEntries] = useState<FinancialEntry[]>([]);
   const [reserves, setReserves] = useState<DailyReserve[]>([]);
-  const [interval, setInterval] = useState<IntervalType>("monthly");
+  const [hiddenIds, setHiddenIds] = useState<string[]>([]);
+
+  const toggleVisibility = (id: string) => {
+    setHiddenIds((prev) => prev.includes(id) ? prev.filter(hid => hid !== id) : [...prev, id]);
+  };
+  // Remove interval state, add selectedMonths
+  const [selectedMonths, setSelectedMonths] = useState<number[]>([new Date().getMonth()]);
   
   // Calculate reserves when entries or selectedDate change
+  // Only use visible entries for forecast/graph/export
+  const visibleEntries = entries.filter(e => !hiddenIds.includes(e.id));
+
   useEffect(() => {
     // Always show 24 months of data, but start from the earliest entry date for true running balance
-    let minEntryDate = entries.length > 0 ? entries.reduce((min, e) => e.date < min ? e.date : min, entries[0].date) : new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+    let minEntryDate = visibleEntries.length > 0 ? visibleEntries.reduce((min, e) => e.date < min ? e.date : min, visibleEntries[0].date) : new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
     minEntryDate = new Date(minEntryDate.getFullYear(), minEntryDate.getMonth(), 1); // snap to first of month
     const endDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 24, 0); // 24 months ahead
     // Calculate all recurring entries for 24 months
-    const recurringEntries = calculateRecurringEntries(entries, minEntryDate, endDate);
+    const recurringEntries = calculateRecurringEntries(visibleEntries, minEntryDate, endDate);
     // Calculate daily reserves for 24 months
     const dailyReserves = calculateDailyReserves(recurringEntries, minEntryDate, endDate);
     setReserves(dailyReserves);
-  }, [entries, selectedDate]);
+  }, [entries, selectedDate, hiddenIds]);
 
   // Handle form submission
   
@@ -47,10 +63,24 @@ const Index = () => {
     setEntries(prev => [...prev, ...imported]);
   };
   
+  // Edit entry logic
+  const [editingEntry, setEditingEntry] = useState<FinancialEntry | null>(null);
+
   // Delete an entry
   const handleDeleteEntry = (id: string) => {
     setEntries(prevEntries => prevEntries.filter(entry => entry.id !== id));
+    if (editingEntry && editingEntry.id === id) setEditingEntry(null);
   };
+
+  // Start editing
+  const handleEditEntry = (entry: FinancialEntry) => setEditingEntry(entry);
+  // Save edit
+  const handleSaveEdit = (updated: FinancialEntry) => {
+    setEntries(prevEntries => prevEntries.map(e => e.id === updated.id ? updated : e));
+    setEditingEntry(null);
+  };
+  // Cancel edit
+  const handleCancelEdit = () => setEditingEntry(null);
   
 
   // Load entries from localStorage on mount
@@ -73,79 +103,113 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-mgs-black p-2 sm:p-4 md:p-8">
-      <header className="text-center border-b border-mgs-green pb-4 mb-6">
-        <h1 className="text-4xl font-orbitron text-mgs-green tracking-wider">Daily Dough Flow</h1>
-        <p className="font-orbitron text-mgs-lightgray mt-1 text-xs tracking-widest">// TACTICAL FINANCE MANAGEMENT //</p>
+      <header className="flex flex-col items-center border-b border-mgs-green pb-4 mb-6 relative">
+        <img src="/logo/android-chrome-512x512.png" alt="Dough Hound Logo" className="w-20 h-20 object-contain mb-2" />
+        <div className="flex flex-col items-center">
+          <span className="text-3xl sm:text-5xl font-orbitron text-mgs-green tracking-wider leading-tight text-center">DOUGH HOUND</span>
+          <span className="text-xl sm:text-3xl font-orbitron text-mgs-green tracking-wider leading-tight text-center">TACTICAL FINANCE</span>
+        </div>
+        <button
+          className="absolute right-2 top-2 px-3 py-1 text-xs font-orbitron bg-mgs-green text-mgs-black rounded hover:bg-mgs-darkgreen border border-mgs-green"
+          onClick={() => setShowOnboarding(true)}
+        >
+          Help
+        </button>
       </header>
+      <OnboardingHint onShow={() => setShowOnboarding(true)} />
+      <OnboardingDialog open={showOnboarding} onClose={() => setShowOnboarding(false)} />
       
       <div className="flex flex-col md:flex-row gap-4 md:gap-6">
         {/* Left Panel - Bar Graph */}
-        <div className="w-full md:w-3/5 bg-opacity-30 border border-mgs-green p-2 sm:p-4 animate-fade-in flex flex-col items-center justify-center min-h-[250px] sm:min-h-[350px] md:min-h-[400px]">
+        <div className="w-full md:w-3/5 bg-opacity-30 border border-mgs-green p-2 sm:p-4 animate-fade-in flex flex-col items-center justify-center min-h-[250px] sm:min-h-[350px] md:min-h-[550px]">
           <h2 className="font-orbitron text-lg text-center mb-4 pb-2 border-b border-mgs-green">
             Reserve Forecast
           </h2>
+          {/* Month Selection Checkboxes */}
           <div className="flex flex-wrap gap-2 justify-center mb-4">
-            {[
-              { label: "Weekly", value: "weekly" },
-              { label: "Monthly", value: "monthly" },
-              { label: "3 Months", value: "quarterly" },
-              { label: "6 Months", value: "semiannually" },
-              { label: "12 Months", value: "annually" }
-            ].map(opt => (
-              <button
-                key={opt.value}
-                className={`px-2 py-1 rounded font-orbitron border text-xs sm:text-sm transition-colors ${interval === opt.value ? 'bg-mgs-green text-mgs-black border-mgs-green' : 'bg-mgs-black text-mgs-green border-mgs-green hover:bg-mgs-green/30'}`}
-                onClick={() => setInterval(opt.value as IntervalType)}
-              >
+            {MONTH_OPTIONS.map(opt => (
+              <label key={opt.value} className={`px-2 py-1 rounded font-orbitron border text-xs sm:text-sm transition-colors cursor-pointer ${selectedMonths.includes(opt.value) ? 'bg-mgs-green text-mgs-black border-mgs-green' : 'bg-mgs-black text-mgs-green border-mgs-green hover:bg-mgs-green/30'}`}>
+                <input
+                  type="checkbox"
+                  checked={selectedMonths.includes(opt.value)}
+                  onChange={e => {
+                    setSelectedMonths(prev =>
+                      e.target.checked
+                        ? [...prev, opt.value].slice(0, 12)
+                        : prev.filter(m => m !== opt.value)
+                    );
+                  }}
+                  className="mr-1 accent-mgs-green"
+                  style={{ display: 'inline-block' }}
+                />
                 {opt.label}
-              </button>
+              </label>
             ))}
           </div>
           <div className="w-full flex-1 flex items-center justify-center overflow-x-auto">
-            <LineGraph data={reserves} interval={interval} selectedDate={selectedDate} entries={entries} />
+            <LineGraph
+              data={reserves
+                .filter(r =>
+                  selectedMonths.includes(r.date.getMonth()) &&
+                  r.date.getFullYear() === new Date().getFullYear()
+                )
+                .sort((a, b) => a.date.getTime() - b.date.getTime())
+              }
+              interval={"custom"}
+              selectedDate={selectedDate}
+              entries={entries}
+            />
           </div>
 
           {/* Export Forecast Button */}
-          <div className="flex justify-center mt-4">
+           <div className="flex justify-center mt-4">
             <button
               className="px-4 py-2 rounded font-orbitron border text-xs sm:text-sm bg-mgs-green text-mgs-black border-mgs-green hover:bg-mgs-green/80 transition-colors"
               onClick={() => {
-                // Aggregate monthly reserves for 24 months
-                const monthly = [];
-                let lastMonth = -1;
+                // Export detailed CSV: Date, Reserve, entry1, entry2, ...
+                // Find max number of entries per day
+                let maxEntries = 0;
                 for (const r of reserves) {
-                  const month = r.date.getMonth();
-                  const year = r.date.getFullYear();
-                  if (monthly.length === 0 || (month !== lastMonth && r.date.getDate() > 25)) {
-                    monthly.push({
-                      date: new Date(year, month + 1, 0),
-                      reserve: r.reserve
-                    });
-                    lastMonth = month;
-                  }
+                  if (r.entries && r.entries.length > maxEntries) maxEntries = r.entries.length;
                 }
-                // Generate CSV for monthly forecast (24 months)
-                let csvMonthly = 'Month,Reserve\n';
-                csvMonthly += monthly.map(row => `${row.date.toISOString().slice(0, 10)},${row.reserve}`).join('\n');
-                // Generate CSV for 12-month forecast
-                let csv12 = 'Month,Reserve\n';
-                csv12 += monthly.slice(0,12).map(row => `${row.date.toISOString().slice(0, 10)},${row.reserve}`).join('\n');
-                // Download both CSVs
-                const download = (csv: string, filename: string) => {
-                  const blob = new Blob([csv], { type: 'text/csv' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = filename;
-                  document.body.appendChild(a);
-                  a.click();
-                  setTimeout(() => {
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                  }, 100);
-                };
-                download(csvMonthly, 'monthly_forecast.csv');
-                download(csv12, '12_month_forecast.csv');
+                // Header
+                let csv = 'Date,Reserve';
+                for (let i = 1; i <= maxEntries; ++i) {
+                  csv += `,Entry ${i}`;
+                }
+                csv += '\n';
+                // Rows
+                for (const r of reserves) {
+                  const date = r.date.toISOString().slice(0, 10);
+                  const reserve = r.reserve;
+                  let row = `${date},${reserve}`;
+                  if (r.entries && r.entries.length > 0) {
+                    row += r.entries.map(e => {
+                      let sign = (e.type === 'paycheck') ? '+' : '-';
+                      let label = e.name ? ` ${e.name}` : '';
+                      return `,"${sign}${e.amount}${label}"`;
+                    }).join('');
+                    // If fewer than maxEntries, pad with blanks
+                    if (r.entries.length < maxEntries) {
+                      row += ','.repeat(maxEntries - r.entries.length);
+                    }
+                  } else {
+                    row += ','.repeat(maxEntries);
+                  }
+                  csv += row + '\n';
+                }
+                // Download
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'detailed_doughflow.csv';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }, 100);
               }}
             >
               Export Forecast
@@ -157,6 +221,12 @@ const Index = () => {
             <EntryList 
               entries={entries}
               onDeleteEntry={handleDeleteEntry}
+              onEditEntry={handleEditEntry}
+              editingEntryId={editingEntry?.id}
+              onSaveEdit={handleSaveEdit}
+              onCancelEdit={handleCancelEdit}
+              hiddenIds={hiddenIds}
+              toggleVisibility={toggleVisibility}
             />
           </div>
         </div>
@@ -191,7 +261,6 @@ const Index = () => {
                 Log Expenditure
               </span>
             </label>
-            
             <label className="flex items-center cursor-pointer">
               <input 
                 type="radio" 
@@ -204,6 +273,7 @@ const Index = () => {
                 Log Acquisition
               </span>
             </label>
+            <PurchaseRadio checked={entryType === "purchase"} onChange={() => setEntryType("purchase")} />
           </div>
           
           {entryType === "bill" ? (
@@ -211,8 +281,13 @@ const Index = () => {
               selectedDate={selectedDate}
               onSubmit={handleEntrySubmit}
             />
-          ) : (
+          ) : entryType === "paycheck" ? (
             <PaycheckForm 
+              selectedDate={selectedDate}
+              onSubmit={handleEntrySubmit}
+            />
+          ) : (
+            <PurchaseForm 
               selectedDate={selectedDate}
               onSubmit={handleEntrySubmit}
             />
@@ -221,7 +296,14 @@ const Index = () => {
       </div>
       
       <footer className="mt-8 py-4 border-t border-mgs-gray text-center text-xs text-mgs-lightgray">
-        <p className="font-orbitron tracking-wider">DAILY DOUGH FLOW :: TACTICAL FINANCE</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+          <span style={{ fontFamily: 'monospace', fontSize: 24, marginLeft: 24 }}>|‖‖‖‖‖|</span>
+          <span style={{ color: '#7dd3fc', fontSize: 12 }}>
+            built by <a href="https://breezblox.com" target="_blank" rel="noopener noreferrer" style={{ color: '#38bdf8', textDecoration: 'none', fontWeight: 600 }}>BreezBlox</a>
+          </span>
+          <span style={{ fontFamily: 'monospace', fontSize: 24, marginRight: 24 }}>|‖‖‖‖‖|</span>
+        </div>
+
       </footer>
     </div>
   );

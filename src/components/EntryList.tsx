@@ -3,20 +3,34 @@ import { useState } from "react";
 import { FinancialEntry } from "@/types";
 import { formatDateToMonthDayYear } from "@/utils/dateUtils";
 import { Button } from "./ui/button";
-import { Trash2, Edit } from "lucide-react";
+import { Trash2, Edit, Eye, EyeOff } from "lucide-react";
+
+import BillForm from "./BillForm";
+import PaycheckForm from "./PaycheckForm";
+import PurchaseForm from "./PurchaseForm";
 
 interface EntryListProps {
   entries: FinancialEntry[];
   onDeleteEntry: (id: string) => void;
+  onEditEntry: (entry: FinancialEntry) => void;
+  editingEntryId?: string;
+  onSaveEdit?: (updated: FinancialEntry) => void;
+  onCancelEdit?: () => void;
+  hiddenIds: string[];
+  toggleVisibility: (id: string) => void;
 }
 
-const EntryList: React.FC<EntryListProps> = ({ entries, onDeleteEntry }) => {
+const EntryList: React.FC<EntryListProps> = ({ entries, onDeleteEntry, onEditEntry, editingEntryId, onSaveEdit, onCancelEdit, hiddenIds, toggleVisibility }) => {
   const [activeTab, setActiveTab] = useState<'bills' | 'paychecks' | 'all'>('all');
   
-  const filteredEntries = 
-    activeTab === 'all' ? entries : 
-    activeTab === 'bills' ? entries.filter(entry => entry.type === 'bill') :
+  // For log display, show all, but for graph/export, exclude hidden
+  const filteredEntries =
+    activeTab === 'all' ? entries :
+    activeTab === 'bills' ? entries.filter(entry => entry.type === 'bill' || entry.type === 'purchase') :
     entries.filter(entry => entry.type === 'paycheck');
+
+  // For graph/export, use only visible entries
+  const visibleEntries = filteredEntries.filter(entry => !hiddenIds.includes(entry.id));
   
   return (
     <div>
@@ -50,20 +64,38 @@ const EntryList: React.FC<EntryListProps> = ({ entries, onDeleteEntry }) => {
           filteredEntries.map(entry => (
             <div 
               key={entry.id} 
-              className={`p-3 border ${entry.type === 'bill' ? 'border-mgs-red/50' : 'border-mgs-green/50'} bg-mgs-darkgray/30`}
+              className={`p-3 border ${entry.type === 'bill' ? 'border-mgs-red/50' : entry.type === 'purchase' ? 'border-yellow-400/50' : 'border-mgs-green/50'} bg-mgs-darkgray/30`}
             >
               <div className="flex justify-between items-start">
                 <div>
-                  <div className={`font-orbitron text-sm ${entry.type === 'bill' ? 'text-mgs-red' : 'text-mgs-green'}`}>
+                  <div className={`font-orbitron text-sm ${entry.type === 'bill' ? 'text-mgs-red' : entry.type === 'purchase' ? 'text-yellow-400' : 'text-mgs-green'}`}>
                     {entry.name}
                   </div>
                   <div className="text-xs text-mgs-lightgray mt-1">
-                    {formatDateToMonthDayYear(entry.date)} • {entry.frequency}
+                    {entry.customDates && entry.customDates.length > 0 ? (
+                      <>
+                        {entry.customDates.map(dateStr => formatDateToMonthDayYear(new Date(dateStr))).join(', ')}
+                        {entry.frequency ? ` • ${entry.frequency}` : ''}
+                      </>
+                    ) : (
+                      <>
+                        {formatDateToMonthDayYear(entry.date)} • {entry.frequency}
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center">
-                  <div className={`font-orbitron mr-4 ${entry.type === 'bill' ? 'text-mgs-red' : 'text-mgs-green'}`}>
-                    {entry.type === 'bill' ? '-' : '+'}{entry.amount.toFixed(2)}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 rounded-none hover:bg-mgs-green/20"
+                    onClick={() => toggleVisibility(entry.id)}
+                    title={hiddenIds.includes(entry.id) ? 'Show in forecast' : 'Hide from forecast'}
+                  >
+                    {hiddenIds.includes(entry.id) ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </Button>
+                  <div className={`font-orbitron mr-4 ${entry.type === 'bill' ? 'text-mgs-red' : entry.type === 'purchase' ? 'text-yellow-400' : 'text-mgs-green'}`}>
+                    {entry.type === 'bill' || entry.type === 'purchase' ? '-' : '+'}{entry.amount.toFixed(2)}
                   </div>
                   <Button 
                     variant="ghost"
@@ -71,10 +103,47 @@ const EntryList: React.FC<EntryListProps> = ({ entries, onDeleteEntry }) => {
                     className="h-7 w-7 rounded-none hover:bg-mgs-green/20"
                     onClick={() => onDeleteEntry(entry.id)}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 size={16} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 rounded-none hover:bg-mgs-green/20"
+                    onClick={() => onEditEntry(entry)}
+                    disabled={!!editingEntryId && editingEntryId !== entry.id}
+                  >
+                    <Edit size={16} />
                   </Button>
                 </div>
               </div>
+              {editingEntryId === entry.id && (
+                <div className="mt-2">
+                  {entry.type === 'bill' && (
+                    <BillForm 
+                      initialValues={entry} 
+                      editMode={true}
+                      onSave={(updated) => onSaveEdit && onSaveEdit(updated)} 
+                      onCancel={onCancelEdit} 
+                    />
+                  )}
+                  {entry.type === 'paycheck' && (
+                    <PaycheckForm 
+                      initialValues={entry} 
+                      editMode={true}
+                      onSave={(updated) => onSaveEdit && onSaveEdit(updated)} 
+                      onCancel={onCancelEdit} 
+                    />
+                  )}
+                  {entry.type === 'purchase' && (
+                    <PurchaseForm 
+                      initialValues={entry} 
+                      editMode={true}
+                      onSave={(updated) => onSaveEdit && onSaveEdit(updated)} 
+                      onCancel={onCancelEdit} 
+                    />
+                  )}
+                </div>
+              )}
             </div>
           ))
         )}

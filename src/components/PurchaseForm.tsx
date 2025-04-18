@@ -1,20 +1,27 @@
 import { useState, FormEvent, useId } from "react";
-import { EntryType, FinancialEntry, Frequency } from "@/types";
+import { FinancialEntry, Frequency } from "@/types";
 import { formatDateToYYYYMMDD, parseLocalDateString } from "@/utils/dateUtils";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import MultiDateCalendar from "./ui/MultiDateCalendar";
 
-interface PaycheckFormProps {
+const FREQUENCY_OPTIONS: Frequency[] = [
+  "weekly",
+  "bi-weekly",
+  "monthly",
+  "one-time"
+];
+
+interface PurchaseFormProps {
   selectedDate: Date;
-  onSubmit?: (entry: Omit<FinancialEntry, 'id'>) => void;
+  onSubmit?: (entry: Omit<FinancialEntry, "id">) => void;
   initialValues?: FinancialEntry;
   editMode?: boolean;
   onSave?: (entry: FinancialEntry) => void;
   onCancel?: () => void;
 }
 
-const PaycheckForm: React.FC<PaycheckFormProps> = ({
+const PurchaseForm: React.FC<PurchaseFormProps> = ({
   selectedDate,
   onSubmit,
   initialValues,
@@ -23,13 +30,13 @@ const PaycheckForm: React.FC<PaycheckFormProps> = ({
   onCancel,
 }) => {
   const formId = useId();
-  const [paycheckName, setPaycheckName] = useState(initialValues ? initialValues.name : "");
-  const [paycheckAmount, setPaycheckAmount] = useState<number | "">(initialValues ? initialValues.amount : "");
-  const [paycheckDate, setPaycheckDate] = useState(
+  const [purchaseName, setPurchaseName] = useState(initialValues ? initialValues.name : "");
+  const [purchaseAmount, setPurchaseAmount] = useState<number | "">(initialValues ? initialValues.amount : "");
+  const [purchaseDate, setPurchaseDate] = useState(
     initialValues ? formatDateToYYYYMMDD(new Date(initialValues.date)) : formatDateToYYYYMMDD(selectedDate)
   );
-  const [paycheckFrequency, setPaycheckFrequency] = useState<Frequency>(
-    initialValues ? initialValues.frequency : "bi-weekly"
+  const [purchaseFrequency, setPurchaseFrequency] = useState<Frequency>(
+    initialValues ? initialValues.frequency : "one-time"
   );
   const [useLimitType, setUseLimitType] = useState<"none" | "occurrences" | "date">(
     initialValues && initialValues.occurrenceLimit
@@ -51,113 +58,94 @@ const PaycheckForm: React.FC<PaycheckFormProps> = ({
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
 
-    if (!paycheckName || paycheckAmount === "") {
+    if (!purchaseName || purchaseAmount === "") {
       // TODO: Add proper validation
       return;
     }
 
     const entry: FinancialEntry = {
       id: initialValues?.id || "",
-      type: "paycheck" as EntryType,
-      name: paycheckName,
-      amount: typeof paycheckAmount === "number" ? paycheckAmount : parseFloat(String(paycheckAmount)),
-      date: parseLocalDateString(paycheckDate),
-      frequency: paycheckFrequency,
+      type: "purchase" as EntryType,
+      name: purchaseName,
+      amount: typeof purchaseAmount === "number" ? purchaseAmount : parseFloat(String(purchaseAmount)),
+      date: parseLocalDateString(purchaseDate),
+      frequency: purchaseFrequency,
+      ...(customDates.length > 0 && { customDates }),
     };
 
     if (useLimitType === "occurrences" && occurrenceLimit !== "") {
       entry.occurrenceLimit = occurrenceLimit;
-      delete entry.stopDate;
     } else if (useLimitType === "date" && stopDate) {
       entry.stopDate = parseLocalDateString(stopDate);
-      delete entry.occurrenceLimit;
-    } else {
-      delete entry.occurrenceLimit;
-      delete entry.stopDate;
     }
-    if (customDates.length > 0) {
-      entry.customDates = customDates;
-    } else {
-      delete entry.customDates;
-    }
+
     if (editMode && onSave) {
       onSave(entry);
     } else if (onSubmit) {
       onSubmit(entry);
       // Reset form when adding
-      setPaycheckName("");
-      setPaycheckAmount("");
-      setPaycheckDate(formatDateToYYYYMMDD(selectedDate));
-      setPaycheckFrequency("bi-weekly");
+      setPurchaseName("");
+      setPurchaseAmount("");
+      setPurchaseDate(formatDateToYYYYMMDD(selectedDate));
+      setPurchaseFrequency("one-time");
       setUseLimitType("none");
       setOccurrenceLimit("");
       setStopDate("");
+      setCustomDates([]);
     }
   };
 
   return (
-    <form id={`paycheck-form-${formId}`} className="space-y-3" onSubmit={handleSubmit}>
+    <form id={`purchase-form-${formId}`} className="space-y-3" onSubmit={handleSubmit}>
       <div>
-        <label
-          htmlFor={`paycheckName-${formId}`}
-          className="font-medium uppercase text-sm text-mgs-lightgray block mb-1"
-        >
-          Acquisition Source:
+        <label htmlFor={`purchaseName-${formId}`} className="font-medium uppercase text-sm text-mgs-lightgray block mb-1">
+          Purchase ID:
         </label>
         <Input
-          id={`paycheckName-${formId}`}
-          value={paycheckName}
-          onChange={(e) => setPaycheckName(e.target.value)}
-          placeholder="e.g., Outer Heaven Contract"
+          id={`purchaseName-${formId}`}
+          value={purchaseName}
+          onChange={e => setPurchaseName(e.target.value)}
+          placeholder="e.g., Gasoline, Groceries, Nicotine, Weed"
           className="font-roboto-mono bg-mgs-darkgray border-mgs-gray text-mgs-lightertext placeholder:text-mgs-lightgray/50 rounded-none"
+          required
         />
       </div>
-
       <div>
-        <label
-          htmlFor={`paycheckAmount-${formId}`}
-          className="font-medium uppercase text-sm text-mgs-lightgray block mb-1"
-        >
+        <label htmlFor={`purchaseAmount-${formId}`} className="font-medium uppercase text-sm text-mgs-lightgray block mb-1">
           Amount:
         </label>
         <Input
-          id={`paycheckAmount-${formId}`}
+          id={`purchaseAmount-${formId}`}
           type="number"
           step="0.01"
-          value={paycheckAmount}
-          onChange={(e) => setPaycheckAmount(e.target.value ? parseFloat(e.target.value) : "")}
-          placeholder="e.g., 500.00"
+          value={purchaseAmount}
+          onChange={e => setPurchaseAmount(e.target.value ? parseFloat(e.target.value) : "")}
+          placeholder="e.g., 45.50"
           className="font-roboto-mono bg-mgs-darkgray border-mgs-gray text-mgs-lightertext placeholder:text-mgs-lightgray/50 rounded-none"
+          required
         />
       </div>
-
       <div>
-        <label
-          htmlFor={`paycheckDate-${formId}`}
-          className="font-medium uppercase text-sm text-mgs-lightgray block mb-1"
-        >
-          Paycheck Date:
+        <label htmlFor={`purchaseDate-${formId}`} className="font-medium uppercase text-sm text-mgs-lightgray block mb-1">
+          Purchase Date:
         </label>
         <Input
-          id={`paycheckDate-${formId}`}
+          id={`purchaseDate-${formId}`}
           type="date"
-          value={paycheckDate}
-          onChange={(e) => setPaycheckDate(e.target.value)}
+          value={purchaseDate}
+          onChange={e => setPurchaseDate(e.target.value)}
           className="font-roboto-mono bg-mgs-darkgray border-mgs-gray text-mgs-lightertext rounded-none"
+          required
         />
       </div>
-
       <div>
-        <label
-          htmlFor={`paycheckFrequency-${formId}`}
-          className="font-medium uppercase text-sm text-mgs-lightgray block mb-1"
-        >
+        <label htmlFor={`purchaseFrequency-${formId}`} className="font-medium uppercase text-sm text-mgs-lightgray block mb-1">
           Frequency Protocol:
         </label>
         <select
-          id={`paycheckFrequency-${formId}`}
-          value={paycheckFrequency}
-          onChange={(e) => setPaycheckFrequency(e.target.value as Frequency)}
+          id={`purchaseFrequency-${formId}`}
+          value={purchaseFrequency}
+          onChange={e => setPurchaseFrequency(e.target.value as Frequency)}
           className="w-full font-roboto-mono bg-mgs-darkgray border-mgs-gray text-mgs-lightertext py-2 px-3 rounded-none"
         >
           <option value="weekly">Weekly</option>
@@ -166,7 +154,6 @@ const PaycheckForm: React.FC<PaycheckFormProps> = ({
           <option value="one-time">One-Time</option>
         </select>
       </div>
-
       <div className="space-y-1">
         <label className="font-medium uppercase text-sm text-mgs-lightgray block mb-1">
           Termination Protocol:
@@ -185,7 +172,6 @@ const PaycheckForm: React.FC<PaycheckFormProps> = ({
               No Limit
             </label>
           </div>
-
           <div className="flex items-center space-x-2">
             <input
               type="radio"
@@ -198,50 +184,43 @@ const PaycheckForm: React.FC<PaycheckFormProps> = ({
             <label htmlFor={`limitOccurrences-${formId}`} className="text-mgs-lightertext">
               Limit Occurrences
             </label>
-          </div>
-
-          {useLimitType === "occurrences" && (
-            <div className="ml-6">
+            {useLimitType === "occurrences" && (
               <Input
                 id={`occurrenceLimit-${formId}`}
                 type="number"
-                min="1"
+                min={1}
                 value={occurrenceLimit}
-                onChange={(e) => setOccurrenceLimit(e.target.value ? parseInt(e.target.value) : "")}
+                onChange={e => setOccurrenceLimit(e.target.value)}
+                className="w-48 ml-2 font-roboto-mono bg-mgs-darkgray border-mgs-gray text-mgs-lightertext placeholder:text-mgs-lightgray/50 rounded-none"
                 placeholder="Number of occurrences"
-                className="font-roboto-mono bg-mgs-darkgray border-mgs-gray text-mgs-lightertext placeholder:text-mgs-lightgray/50 rounded-none"
               />
-            </div>
-          )}
-
+            )}
+          </div>
           <div className="flex items-center space-x-2">
             <input
               type="radio"
-              id={`stopDate-${formId}`}
+              id={`limitDate-${formId}`}
               name={`limitType-${formId}`}
               checked={useLimitType === "date"}
               onChange={() => setUseLimitType("date")}
               className="accent-mgs-green"
             />
-            <label htmlFor={`stopDate-${formId}`} className="text-mgs-lightertext">
+            <label htmlFor={`limitDate-${formId}`} className="text-mgs-lightertext">
               Stop Date
             </label>
-          </div>
-
-          {useLimitType === "date" && (
-            <div className="ml-6">
+            {useLimitType === "date" && (
               <Input
-                id={`paycheckStopDate-${formId}`}
+                id={`stopDate-${formId}`}
                 type="date"
                 value={stopDate}
-                onChange={(e) => setStopDate(e.target.value)}
-                className="font-roboto-mono bg-mgs-darkgray border-mgs-gray text-mgs-lightertext rounded-none"
+                onChange={e => setStopDate(e.target.value)}
+                className="w-48 ml-2 font-roboto-mono bg-mgs-darkgray border-mgs-gray text-mgs-lightertext rounded-none"
+                placeholder="Stop date"
               />
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
-
       <div>
         <label className="font-medium uppercase text-sm text-mgs-lightgray block mb-1">
           Custom Dates (optional):
@@ -251,7 +230,7 @@ const PaycheckForm: React.FC<PaycheckFormProps> = ({
         </div>
         {customDates.length > 0 && (
           <div className="text-xs text-mgs-lightertext mt-1">
-            Selected Dates: {customDates.sort().join(", ")}
+            Selected Dates: {customDates.sort().join(', ')}
           </div>
         )}
       </div>
@@ -277,11 +256,11 @@ const PaycheckForm: React.FC<PaycheckFormProps> = ({
           type="submit"
           className="w-full font-orbitron bg-mgs-green hover:bg-mgs-darkgreen text-mgs-black uppercase tracking-wider rounded-none border border-mgs-green mt-4"
         >
-          Transmit Log
+          Add Purchase
         </Button>
       )}
     </form>
   );
 };
 
-export default PaycheckForm;
+export default PurchaseForm;

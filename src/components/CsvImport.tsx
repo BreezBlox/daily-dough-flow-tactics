@@ -25,7 +25,7 @@ const CsvImport: React.FC<CsvImportProps> = ({ onImport }) => {
         const entries: FinancialEntry[] = [];
         for (const row of results.data as any[]) {
           if (!row.type || !row.name || !row.amount || !row.date || !row.frequency) continue;
-          if (row.type !== "bill" && row.type !== "paycheck") continue;
+          if (row.type !== "bill" && row.type !== "paycheck" && row.type !== "purchase") continue;
           const amount = parseFloat(row.amount);
           if (isNaN(amount)) continue;
           const date = parseLocalDateString(row.date);
@@ -67,7 +67,14 @@ const CsvImport: React.FC<CsvImportProps> = ({ onImport }) => {
         onChange={handleFileChange}
       />
       <a
-        href="data:text/csv,type,name,amount,date,frequency\nbill,Electricity,50.00,2025-05-01,monthly\npaycheck,Salary,2000.00,2025-05-05,bi-weekly\n"
+        href={`data:text/csv,` + encodeURIComponent(
+          [
+            'type,name,amount,date,frequency,occurrence,stopDate,customDates',
+            'bill,Electricity,50,01/05/2025,monthly,12,01/05/2026,',
+            'paycheck,Salary,2000,05/05/2025,bi-weekly,,01/12/2025,',
+            'purchase,Groceries,120,03/05/2025,one-time,,,10/05/2025 15/05/2025'
+          ].join('\n')
+        )}
         download="doughflow-template.csv"
         className="mt-2 text-xs underline text-mgs-lightgray hover:text-mgs-green"
       >

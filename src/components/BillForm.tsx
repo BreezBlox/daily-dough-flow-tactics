@@ -4,40 +4,96 @@ import { EntryType, FinancialEntry, Frequency } from "@/types";
 import { formatDateToYYYYMMDD, parseLocalDateString } from "@/utils/dateUtils";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
+import MultiDateCalendar from "./ui/MultiDateCalendar";
 
 interface BillFormProps {
   selectedDate: Date;
-  onSubmit: (entry: Omit<FinancialEntry, 'id'>) => void;
+  onSubmit?: (entry: Omit<FinancialEntry, "id">) => void;
+  initialValues?: FinancialEntry;
+  editMode?: boolean;
+  onSave?: (entry: FinancialEntry) => void;
+  onCancel?: () => void;
 }
 
-const BillForm: React.FC<BillFormProps> = ({ selectedDate, onSubmit }) => {
+const BillForm: React.FC<BillFormProps> = ({
+  selectedDate,
+  onSubmit,
+  initialValues,
+  editMode,
+  onSave,
+  onCancel,
+}) => {
   const formId = useId();
-  const [billName, setBillName] = useState("");
-  const [billAmount, setBillAmount] = useState<number | "">("");
-  const [billDueDate, setBillDueDate] = useState(formatDateToYYYYMMDD(selectedDate));
-  const [billFrequency, setBillFrequency] = useState<Frequency>("monthly");
+  const [billName, setBillName] = useState(initialValues ? initialValues.name : "");
+  const [billAmount, setBillAmount] = useState<number | "">(initialValues ? initialValues.amount : "");
+  const [billDueDate, setBillDueDate] = useState(
+    initialValues ? formatDateToYYYYMMDD(new Date(initialValues.date)) : formatDateToYYYYMMDD(selectedDate)
+  );
+  const [billFrequency, setBillFrequency] = useState<Frequency>(
+    initialValues ? initialValues.frequency : "monthly"
+  );
+  const [useLimitType, setUseLimitType] = useState<"none" | "occurrences" | "date">(
+    initialValues && initialValues.occurrenceLimit
+      ? "occurrences"
+      : initialValues && initialValues.stopDate
+      ? "date"
+      : "none"
+  );
+  const [occurrenceLimit, setOccurrenceLimit] = useState<number | "">(
+    initialValues && initialValues.occurrenceLimit ? initialValues.occurrenceLimit : ""
+  );
+  const [stopDate, setStopDate] = useState<string>(
+    initialValues && initialValues.stopDate ? formatDateToYYYYMMDD(new Date(initialValues.stopDate)) : ""
+  );
+  const [customDates, setCustomDates] = useState<string[]>(
+    initialValues && initialValues.customDates ? initialValues.customDates : []
+  );
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    
+
     if (!billName || billAmount === "") {
       // TODO: Add proper validation
       return;
     }
-    
-    onSubmit({
-      type: 'bill' as EntryType,
+
+    const entry: FinancialEntry = {
+      id: initialValues?.id || "",
+      type: "bill" as EntryType,
       name: billName,
       amount: typeof billAmount === "number" ? billAmount : parseFloat(String(billAmount)),
       date: parseLocalDateString(billDueDate),
-      frequency: billFrequency
-    });
-    
-    // Reset form
-    setBillName("");
-    setBillAmount("");
-    setBillDueDate(formatDateToYYYYMMDD(selectedDate));
-    setBillFrequency("monthly");
+      frequency: billFrequency,
+    };
+
+    if (useLimitType === "occurrences" && occurrenceLimit !== "") {
+      entry.occurrenceLimit = occurrenceLimit;
+      delete entry.stopDate;
+    } else if (useLimitType === "date" && stopDate) {
+      entry.stopDate = parseLocalDateString(stopDate);
+      delete entry.occurrenceLimit;
+    } else {
+      delete entry.occurrenceLimit;
+      delete entry.stopDate;
+    }
+    if (customDates.length > 0) {
+      entry.customDates = customDates;
+    } else {
+      delete entry.customDates;
+    }
+    if (editMode && onSave) {
+      onSave(entry);
+    } else if (onSubmit) {
+      onSubmit(entry);
+      // Reset form when adding
+      setBillName("");
+      setBillAmount("");
+      setBillDueDate(formatDateToYYYYMMDD(selectedDate));
+      setBillFrequency("monthly");
+      setUseLimitType("none");
+      setOccurrenceLimit("");
+      setStopDate("");
+    }
   };
 
   return (
@@ -100,12 +156,119 @@ const BillForm: React.FC<BillFormProps> = ({ selectedDate, onSubmit }) => {
         </select>
       </div>
       
-      <Button 
-        type="submit" 
-        className="w-full font-orbitron bg-mgs-green hover:bg-mgs-darkgreen text-mgs-black uppercase tracking-wider rounded-none border border-mgs-green mt-4"
-      >
-        Transmit Log
-      </Button>
+      <div className="space-y-1">
+        <label className="font-medium uppercase text-sm text-mgs-lightgray block mb-1">
+          Termination Protocol:
+        </label>
+        <div className="space-y-2">
+          <div className="flex items-center space-x-2">
+            <input
+              type="radio"
+              id={`noLimit-${formId}`}
+              name={`limitType-${formId}`}
+              checked={useLimitType === "none"}
+              onChange={() => setUseLimitType("none")}
+              className="accent-mgs-green"
+            />
+            <label htmlFor={`noLimit-${formId}`} className="text-mgs-lightertext">
+              No Limit
+            </label>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <input
+              type="radio"
+              id={`limitOccurrences-${formId}`}
+              name={`limitType-${formId}`}
+              checked={useLimitType === "occurrences"}
+              onChange={() => setUseLimitType("occurrences")}
+              className="accent-mgs-green"
+            />
+            <label htmlFor={`limitOccurrences-${formId}`} className="text-mgs-lightertext">
+              Limit Occurrences
+            </label>
+          </div>
+          
+          {useLimitType === "occurrences" && (
+            <div className="ml-6">
+              <Input
+                id={`occurrenceLimit-${formId}`}
+                type="number"
+                min="1"
+                value={occurrenceLimit}
+                onChange={(e) => setOccurrenceLimit(e.target.value ? parseInt(e.target.value) : "")}
+                placeholder="Number of occurrences"
+                className="font-roboto-mono bg-mgs-darkgray border-mgs-gray text-mgs-lightertext placeholder:text-mgs-lightgray/50 rounded-none"
+              />
+            </div>
+          )}
+          
+          <div className="flex items-center space-x-2">
+            <input
+              type="radio"
+              id={`stopDate-${formId}`}
+              name={`limitType-${formId}`}
+              checked={useLimitType === "date"}
+              onChange={() => setUseLimitType("date")}
+              className="accent-mgs-green"
+            />
+            <label htmlFor={`stopDate-${formId}`} className="text-mgs-lightertext">
+              Stop Date
+            </label>
+          </div>
+          
+          {useLimitType === "date" && (
+            <div className="ml-6">
+              <Input
+                id={`billStopDate-${formId}`}
+                type="date"
+                value={stopDate}
+                onChange={(e) => setStopDate(e.target.value)}
+                className="font-roboto-mono bg-mgs-darkgray border-mgs-gray text-mgs-lightertext rounded-none"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+      
+      <div>
+        <label className="font-medium uppercase text-sm text-mgs-lightgray block mb-1">
+          Custom Dates (optional):
+        </label>
+        <div className="mb-2">
+          <MultiDateCalendar selectedDates={customDates} onChange={setCustomDates} />
+        </div>
+        {customDates.length > 0 && (
+          <div className="text-xs text-mgs-lightertext mt-1">
+            Selected Dates: {customDates.sort().join(', ')}
+          </div>
+        )}
+      </div>
+      {editMode ? (
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            className="flex-1 font-orbitron bg-mgs-green text-mgs-black rounded-none hover:bg-mgs-darkgreen"
+            onClick={handleSubmit}
+          >
+            Save
+          </Button>
+          <Button
+            type="button"
+            className="flex-1 font-orbitron bg-mgs-gray text-mgs-black rounded-none hover:bg-mgs-darkgray"
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+        </div>
+      ) : (
+        <Button
+          type="submit"
+          className="w-full font-orbitron bg-mgs-green hover:bg-mgs-darkgreen text-mgs-black uppercase tracking-wider rounded-none border border-mgs-green mt-4"
+        >
+          Transmit Log
+        </Button>
+      )}
     </form>
   );
 };

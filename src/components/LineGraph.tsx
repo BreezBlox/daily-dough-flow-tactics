@@ -58,6 +58,10 @@ import {
 } from 'date-fns';
 
 function aggregateData(data: DailyReserve[], interval: IntervalType) {
+  // If interval is 'custom', just return sorted data (no aggregation)
+  if (interval === 'custom') {
+    return data.slice().sort((a, b) => a.date.getTime() - b.date.getTime());
+  }
   if (!data.length) return [];
   const sorted = [...data].sort((a, b) => a.date.getTime() - b.date.getTime());
   const result: { date: Date; reserve: number }[] = [];
@@ -122,72 +126,9 @@ function aggregateData(data: DailyReserve[], interval: IntervalType) {
 
 
 const LineGraph: React.FC<LineGraphProps> = ({ data, interval, selectedDate, entries = [] }) => {
-  let filtered = data;
-  if (interval === "monthly") {
-    // Only show days in the selected month
-    filtered = data.filter(d => isSameMonth(d.date, selectedDate));
-    const days = eachDayOfInterval({ start: startOfMonth(selectedDate), end: endOfMonth(selectedDate) });
-    // Find the reserve for the last day before this month in the daily reserves array
-    const firstOfMonth = startOfMonth(selectedDate);
-    let lastReserve = 0;
-    let prevDay = new Date(firstOfMonth);
-    prevDay.setDate(prevDay.getDate() - 1);
-    const prevReserve = data.find(d => d.date.getTime() === prevDay.getTime());
-    if (prevReserve) {
-      lastReserve = prevReserve.reserve;
-    } else {
-      // Fallback: find the most recent reserve before the first of the month
-      const sortedData = [...data].sort((a, b) => a.date.getTime() - b.date.getTime());
-      for (let i = sortedData.length - 1; i >= 0; --i) {
-        if (sortedData[i].date < firstOfMonth) {
-          lastReserve = sortedData[i].reserve;
-          break;
-        }
-      }
-    }
-    filtered = days.map(day => {
-      const found = data.find(d => d.date.getTime() === day.getTime());
-      if (found) lastReserve = found.reserve;
-      // Preserve entries for this date if available
-      return { date: day, reserve: lastReserve, entries: found && found.entries ? found.entries : [] };
-    });
-  } else if (interval === "3month") {
-    // Show days in the selected 3 months
-    const start = startOfMonth(selectedDate);
-    const end = addMonths(start, 3);
-    const days = eachDayOfInterval({ start, end: addMonths(start, 3) > endOfMonth(addMonths(start, 2)) ? endOfMonth(addMonths(start, 2)) : addMonths(start, 3) });
-    let lastReserve = data.length ? data[0].reserve : 0;
-    filtered = days.map(day => {
-      const found = data.find(d => d.date.getTime() === day.getTime());
-      if (found) lastReserve = found.reserve;
-      return { date: day, reserve: lastReserve };
-    });
-  } else if (interval === "quarterly") {
-    // Show days in the selected quarter
-    filtered = data.filter(d => isSameQuarter(d.date, selectedDate));
-    const quarterDays = eachDayOfInterval({ start: startOfQuarter(selectedDate), end: endOfQuarter(selectedDate) });
-    let quarterLastReserve = filtered.length ? filtered[0].reserve : 0;
-    filtered = quarterDays.map(day => {
-      const found = data.find(d => d.date.getTime() === day.getTime());
-      if (found) quarterLastReserve = found.reserve;
-      return { date: day, reserve: quarterLastReserve };
-    });
-  } else if (interval === "semiannually") {
-    // Show days in the selected half-year
-    const year = selectedDate.getFullYear();
-    const month = selectedDate.getMonth();
-    const start = month < 6 ? new Date(year, 0, 1) : new Date(year, 6, 1);
-    const end = month < 6 ? new Date(year, 5, 30) : new Date(year, 11, 31);
-    let semiFiltered = data.filter(d => d.date >= start && d.date <= end);
-    const semiDays = eachDayOfInterval({ start, end });
-    let semiLastReserve = semiFiltered.length ? semiFiltered[0].reserve : 0;
-    filtered = semiDays.map(day => {
-      const found = data.find(d => d.date.getTime() === day.getTime());
-      if (found) semiLastReserve = found.reserve;
-      return { date: day, reserve: semiLastReserve };
-    });
-  }
-  const aggregated = ["monthly","quarterly","semiannually","3month"].includes(interval) ? filtered : aggregateData(data, interval);
+  // If interval is 'custom', skip any additional filtering/aggregation
+  const chartData = interval === 'custom' ? data : aggregateData(data, interval);
+
   const getLabel = (date: Date) => {
     switch (interval) {
       case "weekly": return format(date, "MMM d");
@@ -201,14 +142,14 @@ const LineGraph: React.FC<LineGraphProps> = ({ data, interval, selectedDate, ent
   };
 
   // Find min/max reserve for gradient stops
-  const reserves = aggregated.map(d => d.reserve);
+  const reserves = chartData.map(d => d.reserve);
   const minReserve = Math.min(...reserves, 0);
   const maxReserve = Math.max(...reserves, 0);
   // Calculate gradient stops: 0 is at the right ratio between min and max
   const zeroRatio = maxReserve === minReserve ? 0.5 : (0 - minReserve) / (maxReserve - minReserve);
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={aggregated} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+    <ResponsiveContainer width="100%" height={400}>
+      <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
         <defs>
           <linearGradient id="reserve-gradient" x1="0" y1="1" x2="0" y2="0">
             <stop offset="0%" stopColor="#e53e3e" /> {/* vivid red for lowest negative */}
@@ -219,24 +160,25 @@ const LineGraph: React.FC<LineGraphProps> = ({ data, interval, selectedDate, ent
         </defs>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis
-          dataKey="date"
-          tickFormatter={getLabel}
-          type="category"
-          minTickGap={10}
-          domain={undefined}
-        />
+           dataKey="date"
+           tickFormatter={getLabel}
+           type="category"
+           minTickGap={0}
+           tickCount={10}
+           domain={undefined}
+         />
         <YAxis
-          domain={[dataMin => Math.floor(dataMin - 10), dataMax => Math.ceil(dataMax + 10)]}
-          allowDecimals={true}
-        />
+           domain={[dataMin => Math.floor(dataMin - 2), dataMax => Math.ceil(dataMax + 2)]}
+           allowDecimals={true}
+           tickCount={10}
+         />
         <Tooltip 
           content={({ active, payload, label }) => {
-            const [showCalc, setShowCalc] = React.useState(false);
             if (!active || !payload || !payload.length) return null;
             const d = payload[0].payload.date;
             // Use the entries attached to this reserve data point, if present
             const dayEntries = payload[0].payload.entries || [];
-            const expenditure = dayEntries.filter(e => e.type === 'bill').reduce((sum, e) => sum + e.amount, 0);
+            const expenditure = dayEntries.filter(e => e.type === 'bill' || e.type === 'purchase').reduce((sum, e) => sum + e.amount, 0);
             const acquisition = dayEntries.filter(e => e.type === 'paycheck').reduce((sum, e) => sum + e.amount, 0);
             // Calculation breakdown
             let prevReserve = 0;
@@ -245,16 +187,6 @@ const LineGraph: React.FC<LineGraphProps> = ({ data, interval, selectedDate, ent
             } else if (payload[0].payload && payload[0].payload._index === 0 && payload[0].payload.reserve !== undefined) {
               prevReserve = payload[0].payload.reserve - acquisition + expenditure;
             }
-            // Only show full breakdown in monthly view
-            if (interval !== 'monthly') {
-              return (
-                <div style={{background:'#181d23',border:'1px solid #38a169',padding:'8px',borderRadius:'8px',minWidth:200}}>
-                  <div style={{color:'#38a169',fontFamily:'Orbitron',marginBottom:4}}>{getLabel(d)}</div>
-                  <div style={{color:'#b9fbc0'}}>Reserve: <b>{payload[0].value}</b></div>
-                </div>
-              );
-            }
-            // Monthly view: show full breakdown
             return (
               <div style={{background:'#181d23',border:'1px solid #38a169',padding:'8px',borderRadius:'8px',minWidth:200}}>
                 <div style={{color:'#38a169',fontFamily:'Orbitron',marginBottom:4}}>{getLabel(d)}</div>
@@ -274,6 +206,18 @@ const LineGraph: React.FC<LineGraphProps> = ({ data, interval, selectedDate, ent
                       ))}
                     </ul>
                   )}
+                  <div style={{fontWeight:'bold',fontSize:12,color:'#fff',marginTop:4}}>Purchases:</div>
+                  {dayEntries.filter(e => e.type === 'purchase').length === 0 ? (
+                    <div style={{color:'#facc15',fontSize:12}}>No purchases</div>
+                  ) : (
+                    <ul style={{margin:0,paddingLeft:16}}>
+                      {dayEntries.filter(e => e.type === 'purchase').map((e,i) => (
+                        <li key={i} style={{color:'#facc15',fontSize:12}}>
+                          Purchase: {e.name} ({e.amount})
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   <div style={{fontWeight:'bold',fontSize:12,color:'#fff',marginTop:4}}>Acquisitions (Paychecks):</div>
                   {dayEntries.filter(e => e.type === 'paycheck').length === 0 ? (
                     <div style={{color:'#b9fbc0',fontSize:12}}>No acquisitions</div>
@@ -287,18 +231,6 @@ const LineGraph: React.FC<LineGraphProps> = ({ data, interval, selectedDate, ent
                     </ul>
                   )}
                 </div>
-                <button style={{marginTop:10,background:'#38a169',color:'#181d23',border:'none',borderRadius:4,padding:'4px 10px',cursor:'pointer'}} onClick={e => {e.stopPropagation();setShowCalc(v=>!v);}}>
-                  {showCalc ? 'Hide' : 'Show'} Calculation
-                </button>
-                {showCalc && (
-                  <div style={{marginTop:8,background:'#222',padding:8,borderRadius:4,color:'#fff',fontSize:13}}>
-                    <div><b>Calculation Breakdown:</b></div>
-                    <div>Previous Reserve: <b>{prevReserve.toFixed(2)}</b></div>
-                    <div>+ Paychecks: <b>{acquisition.toFixed(2)}</b></div>
-                    <div>- Bills: <b>{expenditure.toFixed(2)}</b></div>
-                    <div>= Final Reserve: <b>{payload[0].value.toFixed(2)}</b></div>
-                  </div>
-                )}
               </div>
             );
           }}
