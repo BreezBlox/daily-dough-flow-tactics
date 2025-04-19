@@ -35,7 +35,7 @@ function splitSegments(data: {date: Date, reserve: number}[]) {
 }
 import { DailyReserve } from "@/types";
 
-export type IntervalType = "weekly" | "monthly" | "3month" | "quarterly" | "semiannually" | "annually";
+export type IntervalType = "weekly" | "monthly" | "3month" | "quarterly" | "semiannually" | "annually" | "custom";
 
 // Extend props to accept entries
 interface LineGraphProps {

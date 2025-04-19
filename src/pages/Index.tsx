@@ -1,5 +1,7 @@
 
 import { useState, useEffect } from "react";
+import { supabase } from "@/supabaseClient";
+import { useAuth } from "@/contexts/AuthContext";
 import LineGraph, { IntervalType } from "@/components/LineGraph";
 import { MONTH_OPTIONS } from "@/utils/monthOptions";
 import Calendar from "@/components/Calendar";
@@ -17,20 +19,22 @@ import { FinancialEntry, EntryType, DailyReserve } from "@/types";
 import { calculateRecurringEntries, calculateDailyReserves, formatDateToMonthDayYear } from "@/utils/dateUtils";
 import { v4 as uuidv4 } from "uuid";
 
+// No more direct auth/redirect logic here! ProtectedRoute handles it.
 const Index = () => {
+  const { user } = useAuth();
+  const [loadingEntries, setLoadingEntries] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [entryType, setEntryType] = useState<EntryType>("bill");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [entries, setEntries] = useState<FinancialEntry[]>([]);
   const [reserves, setReserves] = useState<DailyReserve[]>([]);
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
-
-  const toggleVisibility = (id: string) => {
-    setHiddenIds((prev) => prev.includes(id) ? prev.filter(hid => hid !== id) : [...prev, id]);
-  };
-  // Remove interval state, add selectedMonths
   const [selectedMonths, setSelectedMonths] = useState<number[]>([new Date().getMonth()]);
-  
+  const [editingEntry, setEditingEntry] = useState<FinancialEntry | null>(null);
+
+  // (Remove the useEffect that conditionally navigates)
+
+
   // Calculate reserves when entries or selectedDate change
   // Only use visible entries for forecast/graph/export
   const visibleEntries = entries.filter(e => !hiddenIds.includes(e.id));
@@ -47,27 +51,89 @@ const Index = () => {
     setReserves(dailyReserves);
   }, [entries, selectedDate, hiddenIds]);
 
+  // Fetch entries from Supabase on mount
+  useEffect(() => {
+    if (!user) return;
+    setLoadingEntries(true);
+    supabase
+      .from('financial_entries')
+      .select('*')
+      .eq('user_id', user.id)
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setEntries(data.map((entry: any) => ({
+            ...entry,
+            date: new Date(entry.date),
+            stopDate: entry.stop_date ? new Date(entry.stop_date) : undefined,
+            occurrenceLimit: entry.occurrence_limit ?? undefined,
+            customDates: entry.custom_dates ?? undefined,
+          })));
+        }
+        setLoadingEntries(false);
+      });
+  }, [user]);
+
+  useEffect(() => {
+    localStorage.setItem('financialEntries', JSON.stringify(entries));
+  }, [entries]);
+
+  const toggleVisibility = (id: string) => {
+    setHiddenIds((prev) => prev.includes(id) ? prev.filter(hid => hid !== id) : [...prev, id]);
+  };
+
   // Handle form submission
   
   // Handle form submission
-  const handleEntrySubmit = (newEntry: Omit<FinancialEntry, 'id'>) => {
-    const entryWithId: FinancialEntry = {
+  // Add entry to Supabase
+  const handleEntrySubmit = async (newEntry: Omit<FinancialEntry, 'id'>) => {
+    if (!user) return;
+    const entryWithId = {
       ...newEntry,
-      id: uuidv4()
+      id: crypto.randomUUID ? crypto.randomUUID() : uuidv4(),
+      user_id: user.id,
+      occurrence_limit: newEntry.occurrenceLimit ?? null,
+      stop_date: newEntry.stopDate ? newEntry.stopDate.toISOString() : null,
+      custom_dates: newEntry.customDates ?? null
     };
-    setEntries(prevEntries => [...prevEntries, entryWithId]);
+    const { error } = await supabase.from('financial_entries').insert([{
+      ...entryWithId,
+      date: newEntry.date.toISOString(),
+      type: newEntry.type,
+      name: newEntry.name,
+      amount: newEntry.amount,
+      frequency: newEntry.frequency,
+      occurrence_limit: newEntry.occurrenceLimit ?? null,
+      stop_date: newEntry.stopDate ? newEntry.stopDate.toISOString() : null,
+      custom_dates: newEntry.customDates ?? null
+    }]);
+    if (!error) {
+      setEntries(prev => [...prev, { ...entryWithId, date: newEntry.date }]);
+    }
   };
 
   // Bulk import handler for CSV
-  const handleCsvImport = (imported: FinancialEntry[]) => {
-    setEntries(prev => [...prev, ...imported]);
+  // Bulk import handler for CSV (save to Supabase)
+  const handleCsvImport = async (imported: FinancialEntry[]) => {
+    if (!user) return;
+    const entriesToInsert = imported.map(entry => ({
+      ...entry,
+      id: crypto.randomUUID ? crypto.randomUUID() : uuidv4(),
+      user_id: user.id,
+      date: entry.date.toISOString(),
+      occurrence_limit: entry.occurrenceLimit ?? null,
+      stop_date: entry.stopDate ? entry.stopDate.toISOString() : null,
+      custom_dates: entry.customDates ?? null
+    }));
+    const { error } = await supabase.from('financial_entries').insert(entriesToInsert);
+    if (!error) {
+      setEntries(prev => [...prev, ...entriesToInsert.map(e => ({ ...e, date: new Date(e.date) }))]);
+    }
   };
   
-  // Edit entry logic
-  const [editingEntry, setEditingEntry] = useState<FinancialEntry | null>(null);
-
   // Delete an entry
-  const handleDeleteEntry = (id: string) => {
+  // Delete entry from Supabase
+  const handleDeleteEntry = async (id: string) => {
+    await supabase.from('financial_entries').delete().eq('id', id);
     setEntries(prevEntries => prevEntries.filter(entry => entry.id !== id));
     if (editingEntry && editingEntry.id === id) setEditingEntry(null);
   };
@@ -75,7 +141,18 @@ const Index = () => {
   // Start editing
   const handleEditEntry = (entry: FinancialEntry) => setEditingEntry(entry);
   // Save edit
-  const handleSaveEdit = (updated: FinancialEntry) => {
+  // Update entry in Supabase
+  const handleSaveEdit = async (updated: FinancialEntry) => {
+    await supabase.from('financial_entries').update({
+      type: updated.type,
+      name: updated.name,
+      amount: updated.amount,
+      date: updated.date.toISOString(),
+      frequency: updated.frequency,
+      occurrence_limit: updated.occurrenceLimit ?? null,
+      stop_date: updated.stopDate ? updated.stopDate.toISOString() : null,
+      custom_dates: updated.customDates ?? null
+    }).eq('id', updated.id);
     setEntries(prevEntries => prevEntries.map(e => e.id === updated.id ? updated : e));
     setEditingEntry(null);
   };
@@ -83,24 +160,14 @@ const Index = () => {
   const handleCancelEdit = () => setEditingEntry(null);
   
 
-  // Load entries from localStorage on mount
-  useEffect(() => {
-    const savedEntries = localStorage.getItem('financialEntries');
-    if (savedEntries) {
-      // Parse entries and convert date strings back to Date objects
-      const parsedEntries: FinancialEntry[] = JSON.parse(savedEntries).map((entry: any) => ({
-        ...entry,
-        date: new Date(entry.date)
-      }));
-      setEntries(parsedEntries);
-    }
-  }, []);
+  
   
   // Save entries to localStorage when they change
   useEffect(() => {
     localStorage.setItem('financialEntries', JSON.stringify(entries));
   }, [entries]);
 
+  if (loadingEntries) return <div className="text-mgs-green font-orbitron text-2xl text-center mt-24">Loading your tactical data...</div>;
   return (
     <div className="min-h-screen bg-mgs-black p-2 sm:p-4 md:p-8">
       <header className="flex flex-col items-center border-b border-mgs-green pb-4 mb-6 relative">
