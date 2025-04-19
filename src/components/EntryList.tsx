@@ -1,7 +1,7 @@
 
 import { useState } from "react";
 import { FinancialEntry } from "@/types";
-import { formatDateToMonthDayYear } from "@/utils/dateUtils";
+import { formatDateToMonthDayYear, parseLocalDateString } from "@/utils/dateUtils";
 import { Button } from "./ui/button";
 import { Trash2, Edit, Eye, EyeOff } from "lucide-react";
 
@@ -73,15 +73,15 @@ const EntryList: React.FC<EntryListProps> = ({ entries, onDeleteEntry, onEditEnt
                   </div>
                   <div className="text-xs text-mgs-lightgray mt-1">
                     {entry.customDates && entry.customDates.length > 0 ? (
-                      <>
-                        {entry.customDates.map(dateStr => formatDateToMonthDayYear(new Date(dateStr))).join(', ')}
-                        {entry.frequency ? ` • ${entry.frequency}` : ''}
-                      </>
-                    ) : (
-                      <>
-                        {formatDateToMonthDayYear(entry.date)} • {entry.frequency}
-                      </>
-                    )}
+  <>
+    {entry.customDates.map(dateStr => formatDateToMonthDayYear(parseLocalDateString(dateStr))).join(', ')}
+    {entry.frequency ? ` • ${entry.frequency}` : ''}
+  </>
+) : (
+  <>
+    {formatDateToMonthDayYear(parseLocalDateString(typeof entry.date === 'string' ? entry.date : entry.date.toISOString().substring(0, 10)))} • {entry.frequency}
+  </>
+)}
                   </div>
                 </div>
                 <div className="flex items-center">
